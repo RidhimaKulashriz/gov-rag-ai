@@ -1,0 +1,12 @@
+langchain
+sentence-transformers
+qdrant-client
+networkx
+transformers
+pypdf
+streamlit
+torch
+tqdm
+python-dotenv
+scikit-learn
+matplotlib
