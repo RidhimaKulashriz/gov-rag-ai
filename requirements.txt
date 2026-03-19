@@ -1,7 +1,40 @@
-fastapi
-uvicorn
-transformers
-sentence-transformers
-torch
-qdrant-client
-networkx
+
+# Core
+streamlit==1.28.1
+python-dotenv==1.0.0
+
+# Document Processing
+pypdf==3.17.4
+PyMuPDF==1.23.8  # For better PDF processing
+pdf2image==1.16.3
+pytesseract==0.3.10  # OCR for scanned documents
+Pillow==10.1.0
+
+# NLP and Embeddings
+sentence-transformers==2.2.2
+transformers==4.35.2
+torch==2.2.0
+accelerate==0.24.1
+
+# Vector Database
+qdrant-client==1.7.0
+
+# LangChain - Updated for split packages
+langchain==0.3.20
+langchain-community==0.3.1
+langchain-text-splitters==0.3.6
+langchain-google-genai
+google-generativeai
+
+# Data Science
+numpy==1.26.0
+pandas==2.2.2
+networkx==3.1  # For graph visualizations
+networkx==3.1  # For graph visualizations
+
+# Utilities
+PyYAML==6.0.1
+typing-extensions==4.8.0
+pydantic>=2.7.4,<3.0.0
+tiktoken==0.5.2
+
