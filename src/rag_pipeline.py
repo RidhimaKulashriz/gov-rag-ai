@@ -1,120 +1,84 @@
+from typing import List, Dict
+import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from retriever import Retriever
-from citation_checker import CitationChecker
-
 
 class RAGPipeline:
-    def __init__(self):
-        # Initialize retriever
-        self.retriever = Retriever()
+    def __init__(
+        self,
+        retriever: Retriever = None,
+        model_name: str = "facebook/bart-large-cnn",
+        max_input_length: int = 1024,
+        max_output_length: int = 300,
+        min_output_length: int = 100
+    ):
+        self.retriever = retriever if retriever else Retriever()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        
+        self.max_input_length = max_input_length
+        self.max_output_length = max_output_length
+        self.min_output_length = min_output_length
 
-        # Load FLAN-T5 model correctly (seq2seq)
-        self.tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-base")
-        self.model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base")
+        # Device handling
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model.to(self.device)
 
-        # Citation verification module
-        self.citation_checker = CitationChecker()
-
-    def generate_answer(self, query: str):
+    def generate_prompt(self, question: str, context_docs: List[Dict]) -> str:
         """
-        Full RAG pipeline:
-        1. Retrieve relevant chunks
-        2. Clean and compress context
-        3. Generate answer
-        4. Verify citations
+        Creates a prompt that highlights differences between sources.
         """
+        context_text = "\n".join(
+            [f"Source {i+1}: {doc['text']}" for i, doc in enumerate(context_docs)]
+        )
+        prompt = (
+            "Summarize the following documents to answer the question. "
+            "Highlight any differences or supersessions between sources.\n\n"
+            f"Context:\n{context_text}\n\n"
+            f"Question: {question}\n\n"
+            "Answer:"
+        )
+        return prompt
 
-        # -------------------------
-        # Step 1: Retrieve documents
-        # -------------------------
-        docs = self.retriever.retrieve(query)
+    def answer(self, question: str, top_k: int = 10, include_sources: bool = True) -> str:
+        """
+        Retrieve relevant docs and generate a summary highlighting differences.
+        """
+        retrieved_docs = self.retriever.retrieve(question, top_k=top_k)
+        if not retrieved_docs:
+            return "No relevant documents found."
 
-        # -------------------------
-        # Step 2: Clean context
-        # -------------------------
-        clean_chunks = []
+        prompt = self.generate_prompt(question, retrieved_docs)
 
-        for doc in docs:
-            text = doc["text"]
-
-            # remove noisy lines
-            lines = text.split("\n")
-            lines = [
-                l for l in lines
-                if len(l.strip()) > 40 and "Figure" not in l
-            ]
-
-            cleaned = " ".join(lines)
-            clean_chunks.append(cleaned[:300])  # keep context short
-
-        context = " ".join(clean_chunks)
-
-        # -------------------------
-        # Step 3: Prompt
-        # -------------------------
-        prompt = f"""
-You are an expert government policy assistant.
-
-Carefully read the context and answer the question clearly.
-Do NOT copy text directly. Explain in your own words.
-
-Context:
-{context}
-
-Question:
-{query}
-
-Give a detailed answer in 3-5 sentences:
-"""
-
-        # -------------------------
-        # Step 4: Tokenize
-        # -------------------------
+        # Tokenize with truncation
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
             truncation=True,
-            max_length=512
+            max_length=self.max_input_length
+        )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+
+        # Generate summary
+        summary_ids = self.model.generate(
+            inputs["input_ids"],
+            num_beams=4,
+            max_length=self.max_output_length,
+            min_length=self.min_output_length,
+            length_penalty=2.0,
+            early_stopping=True,
+            bos_token_id=self.model.config.bos_token_id
         )
 
-        # -------------------------
-        # Step 5: Generate answer
-        # -------------------------
-        outputs = self.model.generate(
-            **inputs,
-            max_length=200
-        )
+        answer_text = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
-        answer = self.tokenizer.decode(
-            outputs[0],
-            skip_special_tokens=True
-        )
+        if include_sources:
+            answer_text += "\n\nSources:\n" + "\n".join([f"Source {i+1}" for i in range(len(retrieved_docs))])
 
-        # -------------------------
-        # Step 6: Verify citations
-        # -------------------------
-        verified = self.citation_checker.verify(answer, docs)
-
-        return answer, docs, verified
+        return answer_text
 
 
-# ---------------------------------
-# CLI TESTING
-# ---------------------------------
 if __name__ == "__main__":
     rag = RAGPipeline()
-
-    query = "What is the trauma protocol?"
-
-    answer, sources, verified = rag.generate_answer(query)
-
-    print("\n🧠 ANSWER:\n")
-    print(answer)
-
-    print("\n📚 RETRIEVED SOURCES:\n")
-    for s in sources:
-        print(f"{s['source']} | Chunk {s['chunk_id']}")
-
-    print("\n✅ VERIFIED SOURCES:\n")
-    for v in verified:
-        print(f"{v['source']} | Chunk {v['chunk_id']}")
+    question = "What is the trauma protocol?"
+    print("\nAnswer:\n", rag.answer(question))

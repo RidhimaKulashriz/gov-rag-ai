@@ -2,58 +2,76 @@ import os
 from typing import List, Dict
 from pypdf import PdfReader
 
+from metadata_extractor import MetadataExtractor
+
 
 class PDFIngestor:
+
     def __init__(self, pdf_dir: str):
         self.pdf_dir = pdf_dir
+        self.extractor = MetadataExtractor()
 
-    def load_pdfs(self) -> List[str]:
+    def extract_text_from_pdf(self, file_path: str) -> str:
         """
-        Get all PDF file paths from directory
+        Extract text from PDF file
         """
-        pdf_files = []
-        for file in os.listdir(self.pdf_dir):
-            if file.endswith(".pdf"):
-                pdf_files.append(os.path.join(self.pdf_dir, file))
-        return pdf_files
-
-    def extract_text(self, pdf_path: str) -> str:
-        """
-        Extract text from a single PDF
-        """
-        reader = PdfReader(pdf_path)
         text = ""
 
-        for page in reader.pages:
-            if page.extract_text():
-                text += page.extract_text() + "\n"
+        try:
+            reader = PdfReader(file_path)
+
+            for page in reader.pages:
+                if page.extract_text():
+                    text += page.extract_text() + "\n"
+
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
 
         return text.strip()
 
     def ingest(self) -> List[Dict]:
         """
-        Main ingestion pipeline
-        Returns structured documents
+        Ingest all PDFs and return structured documents
         """
         documents = []
-        pdf_files = self.load_pdfs()
 
-        for pdf in pdf_files:
-            text = self.extract_text(pdf)
+        for filename in os.listdir(self.pdf_dir):
 
+            if not filename.endswith(".pdf"):
+                continue
+
+            file_path = os.path.join(self.pdf_dir, filename)
+
+            print(f"Processing: {filename}")
+
+            text = self.extract_text_from_pdf(file_path)
+
+            if not text:
+                print(f"Skipping empty file: {filename}")
+                continue
+
+            # 🔥 Extract metadata
+            metadata = self.extractor.extract(text)
+
+            # Store structured doc
             documents.append({
-                "source": os.path.basename(pdf),
-                "text": text
+                "text": text,
+                "source": filename,
+                "metadata": metadata
             })
+
+        print(f"\nTotal documents processed: {len(documents)}")
 
         return documents
 
 
-# 🔥 For testing
+# 🔥 TEST
 if __name__ == "__main__":
     ingestor = PDFIngestor(pdf_dir="data/pdfs")
     docs = ingestor.ingest()
 
     for doc in docs:
-        print(f"\n📄 {doc['source']}")
-        print(doc["text"][:500])  # preview first 500 char
+        print("\n---")
+        print("Source:", doc["source"])
+        print("Metadata:", doc["metadata"])
+        print("Preview:", doc["text"][:200])

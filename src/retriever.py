@@ -2,14 +2,16 @@ from typing import List, Dict
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 
-
 class Retriever:
     def __init__(self, collection_name="gov_docs"):
         # Load embedding model
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
-        # Connect to Qdrant
-        self.client = QdrantClient(path="./qdrant_storage")
+        # Connect to Qdrant with thread-safety
+        self.client = QdrantClient(
+            path="./qdrant_storage",
+            force_disable_check_same_thread=True
+        )
 
         self.collection_name = collection_name
 
@@ -17,11 +19,10 @@ class Retriever:
         """
         Retrieve top-k relevant chunks for a query
         """
-
         # Convert query → embedding
         query_vector = self.model.encode(query).tolist()
 
-        # ✅ NEW QDRANT API (IMPORTANT FIX)
+        # Query Qdrant
         results = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
@@ -30,7 +31,6 @@ class Retriever:
 
         # Format results
         retrieved_docs = []
-
         for res in results:
             retrieved_docs.append({
                 "text": res.payload["text"],
@@ -42,15 +42,14 @@ class Retriever:
         return retrieved_docs
 
 
-# 🔥 TEST BLOCK
+# TEST BLOCK
 if __name__ == "__main__":
     retriever = Retriever()
 
     query = "What is the circular about?"
     results = retriever.retrieve(query)
 
-    print("\n🔍 Query:", query)
-
+    print("\nQuery:", query)
     for i, r in enumerate(results):
         print("\n---")
         print(f"Rank {i+1} | Score: {r['score']:.4f}")

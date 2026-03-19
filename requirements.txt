@@ -1,12 +1,7 @@
-langchain
+fastapi
+uvicorn
+transformers
 sentence-transformers
+torch
 qdrant-client
 networkx
-transformers
-pypdf
-streamlit
-torch
-tqdm
-python-dotenv
-scikit-learn
-matplotlib
